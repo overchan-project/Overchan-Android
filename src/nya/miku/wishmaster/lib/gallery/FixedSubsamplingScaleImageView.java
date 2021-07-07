@@ -785,12 +785,7 @@ public class FixedSubsamplingScaleImageView extends View {
 
         fitToBounds(true);
 
-        // Load double resolution - next level will be split into four tiles and at the center all four are required,
-        // so don't bother with tiling until the next level 16 tiles are needed.
         fullImageSampleSize = calculateInSampleSize();
-        if (fullImageSampleSize > 1) {
-            fullImageSampleSize /= 2;
-        }
 
         initialiseTileMap(maxTileDimensions);
 
