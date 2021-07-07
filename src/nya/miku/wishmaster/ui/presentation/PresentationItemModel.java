@@ -42,6 +42,7 @@ import nya.miku.wishmaster.ui.theme.ThemeUtils.ThemeColors;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Parcel;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -62,6 +63,8 @@ public class PresentationItemModel {
     
     public static final String ALL_REFERENCES_URI = "references://all?from=";
     public static final String POST_REFERER = "refpost://";
+    
+    public static final String SOFT_HYPHEN = "\u00ad";
     
     private Resources resources = MainApplication.getInstance().resources;
     private URLSpanClickListener spanClickListener;
@@ -154,8 +157,13 @@ public class PresentationItemModel {
         this.openSpoilers = openSpoilers;
         this.floatingModels = floatingModels;
         
-        this.spannedComment = HtmlParser.createSpanned(source.subject, source.comment, spanClickListener, imageGetter, themeColors, openSpoilers,
-                POST_REFERER + source.number);
+        // Workaround for Android 6.0 View bug
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.M) {
+            sourceModel.comment = sourceModel.comment.replace(SOFT_HYPHEN, "");
+        }
+        
+        this.spannedComment = HtmlParser.createSpanned(sourceModel.subject, sourceModel.comment, spanClickListener, imageGetter,
+                themeColors, openSpoilers, POST_REFERER + sourceModel.number);
         this.dateString = source.timestamp != 0 ? dateFormat.format(source.timestamp) : "";
         parseReferences();
         if (subscriptions != null) findSubscriptions(subscriptions);
