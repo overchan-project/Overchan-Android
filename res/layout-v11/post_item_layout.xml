@@ -178,6 +178,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
         android:paddingTop="5dp"
         android:textAppearance="?android:attr/textAppearanceSmall"
         android:textColor="?attr/itemInfoForeground"
+        android:background="?android:attr/selectableItemBackground"
         android:clickable="true"
         android:visibility="gone" />
 </LinearLayout>

@@ -3588,8 +3588,10 @@ public class BoardFragment extends Fragment implements AdapterView.OnItemClickLi
                     public View getView(final int position, View convertView, ViewGroup parent) {
                         View view = adapter.getView(position, convertView, parent, dlgWidth, getItem(position));
                         view.setBackgroundColor(bgColor);
-                        TextView comment = (TextView)view.findViewById(R.id.post_comment);
-                        if (comment != null) comment.setTextIsSelectable(false);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+                            TextView comment = (TextView)view.findViewById(R.id.post_comment);
+                            if (comment != null) comment.setTextIsSelectable(false);
+                        }
                         view.setBackgroundResource(ThemeUtils.resolveAttribute(activity.getTheme(),
                                     android.R.attr.selectableItemBackground, true).resourceId);
                         view.setClickable(true);
