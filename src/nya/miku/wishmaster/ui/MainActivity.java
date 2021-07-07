@@ -391,7 +391,6 @@ public class MainActivity extends FragmentActivity {
                 if (url != null) {
                     Intent shareIntent = new Intent(Intent.ACTION_SEND);
                     shareIntent.setType("text/plain");
-                    shareIntent.putExtra(Intent.EXTRA_SUBJECT, url);
                     shareIntent.putExtra(Intent.EXTRA_TEXT, url);
                     startActivity(Intent.createChooser(shareIntent, getString(R.string.share_via)));
                 }

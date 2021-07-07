@@ -761,7 +761,6 @@ public class BoardFragment extends Fragment implements AdapterView.OnItemClickLi
         String absoluteUrl = chan.fixRelativeUrl(model.path);
         Intent shareIntent = new Intent(Intent.ACTION_SEND);
         shareIntent.setType("text/plain");
-        shareIntent.putExtra(Intent.EXTRA_SUBJECT, absoluteUrl);
         shareIntent.putExtra(Intent.EXTRA_TEXT, absoluteUrl);
         startActivity(Intent.createChooser(shareIntent, getString(R.string.share_via)));
     }
@@ -868,7 +867,6 @@ public class BoardFragment extends Fragment implements AdapterView.OnItemClickLi
                 String shareThreadLinkUrl = chan.buildUrl(shareThreadLinkUrlPageModel);
                 Intent shareThreadLinkIntent = new Intent(Intent.ACTION_SEND);
                 shareThreadLinkIntent.setType("text/plain");
-                shareThreadLinkIntent.putExtra(Intent.EXTRA_SUBJECT, shareThreadLinkUrl);
                 shareThreadLinkIntent.putExtra(Intent.EXTRA_TEXT, shareThreadLinkUrl);
                 startActivity(Intent.createChooser(shareThreadLinkIntent, resources.getString(R.string.share_via)));
                 return true;
@@ -931,7 +929,6 @@ public class BoardFragment extends Fragment implements AdapterView.OnItemClickLi
                 String shareLinkUrl = chan.buildUrl(shareLinkUrlPageModel);
                 Intent shareLinkIntent = new Intent(Intent.ACTION_SEND);
                 shareLinkIntent.setType("text/plain");
-                shareLinkIntent.putExtra(Intent.EXTRA_SUBJECT, shareLinkUrl);
                 shareLinkIntent.putExtra(Intent.EXTRA_TEXT, shareLinkUrl);
                 startActivity(Intent.createChooser(shareLinkIntent, resources.getString(R.string.share_via)));
                 return true;

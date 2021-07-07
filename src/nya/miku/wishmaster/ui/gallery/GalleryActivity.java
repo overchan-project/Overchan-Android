@@ -621,7 +621,6 @@ public class GalleryActivity extends Activity implements View.OnClickListener, V
         if (absoluteUrl == null) return;
         Intent shareIntent = new Intent(Intent.ACTION_SEND);
         shareIntent.setType("text/plain");
-        shareIntent.putExtra(Intent.EXTRA_SUBJECT, absoluteUrl);
         shareIntent.putExtra(Intent.EXTRA_TEXT, absoluteUrl);
         startActivity(Intent.createChooser(shareIntent, getString(R.string.share_via)));
     }
