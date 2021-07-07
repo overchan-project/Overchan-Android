@@ -62,9 +62,9 @@ import nya.miku.wishmaster.lib.base64.Base64;
 import nya.miku.wishmaster.lib.org_json.JSONObject;
 
 public class LolifoxModule extends InfinityModule {
-    private static final String CHAN_NAME = "lolifox.cc";
-    private static final String DEFAULT_DOMAIN = "lolifox.cc";
-    private static final String ONION_DOMAIN = "wn3ghyuon5eaqyxi7yauald3d53gsxrkanzpu2qdyc54vobif2qutsid.onion";
+    private static final String CHAN_NAME = "lolifox.club";
+    private static final String DEFAULT_DOMAIN = "lolifox.club";
+    private static final String ONION_DOMAIN = "kdrlbdzp2kzhofos5nfzd7ohz6f6n4fuwrkhs7adgx3l7rvhlqna3cad.onion";
     private static final String[] DOMAINS = new String[]{DEFAULT_DOMAIN, ONION_DOMAIN};
     private static final String[] ATTACHMENT_KEYS = new String[] { "file", "file2", "file3", "file4", "file5" };
     private static final Pattern PROTECTED_URL_PATTERN = Pattern.compile("<a[^>]*href=\"https?://privatelink.de/\\?([^\"]*)\"[^>]*>");
@@ -122,7 +122,6 @@ public class LolifoxModule extends InfinityModule {
         onionPref.setDisableDependentsState(true);
         preferenceGroup.addPreference(onionPref);
         httpsPref.setDependency(getSharedKey(PREF_KEY_USE_ONION));
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
     }

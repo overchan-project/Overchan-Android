@@ -40,8 +40,6 @@ import nya.miku.wishmaster.lib.org_json.JSONObject;
 
 public abstract class CloudflareChanModule extends AbstractChanModule {
     
-    protected static final String PREF_KEY_CLOUDFLARE_RECAPTCHA_FALLBACK = "PREF_KEY_CLOUDFLARE_RECAPTCHA_FALLBACK";
-    
     protected static final String PREF_KEY_CLOUDFLARE_COOKIE_VALUE = "PREF_KEY_CLOUDFLARE_COOKIE";
     protected static final String PREF_KEY_CLOUDFLARE_COOKIE_DOMAIN = "PREF_KEY_CLOUDFLARE_COOKIE_DOMAIN";
     
@@ -105,30 +103,6 @@ public abstract class CloudflareChanModule extends AbstractChanModule {
                 throw CloudflareException.antiDDOS(url, getChanName());
             }
         }
-    }
-    
-    @Override
-    public void addPreferencesOnScreen(PreferenceGroup preferenceGroup) {
-        super.addPreferencesOnScreen(preferenceGroup);
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
-        
-    }
-    
-    protected void addCloudflareRecaptchaFallbackPreference(PreferenceGroup preferenceGroup) {
-        if (canCloudflare()) {
-            Context context = preferenceGroup.getContext();
-            CheckBoxPreference fallbackPref = new LazyPreferences.CheckBoxPreference(context);
-            fallbackPref.setTitle(R.string.pref_cf_recaptcha_fallback);
-            fallbackPref.setSummary(R.string.pref_cf_recaptcha_fallback_summary);
-            fallbackPref.setKey(getSharedKey(PREF_KEY_CLOUDFLARE_RECAPTCHA_FALLBACK));
-            fallbackPref.setDefaultValue(false);
-            preferenceGroup.addPreference(fallbackPref);
-        }
-    }
-    
-    @Deprecated
-    protected boolean cloudflareRecaptchaFallback() {
-        return preferences.getBoolean(getSharedKey(PREF_KEY_CLOUDFLARE_RECAPTCHA_FALLBACK), false);
     }
     
     @Override

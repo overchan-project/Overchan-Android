@@ -40,10 +40,17 @@ import nya.miku.wishmaster.api.models.AttachmentModel;
 import nya.miku.wishmaster.api.models.BoardModel;
 import nya.miku.wishmaster.api.models.SendPostModel;
 import nya.miku.wishmaster.api.models.SimpleBoardModel;
+import nya.miku.wishmaster.api.models.ThreadModel;
 import nya.miku.wishmaster.api.models.UrlPageModel;
 import nya.miku.wishmaster.api.util.ChanModels;
 import nya.miku.wishmaster.api.util.WakabaReader;
+import nya.miku.wishmaster.api.util.WakabaUtils;
+import nya.miku.wishmaster.common.IOUtils;
 import nya.miku.wishmaster.http.ExtendedMultipartBuilder;
+import nya.miku.wishmaster.http.streamer.HttpRequestModel;
+import nya.miku.wishmaster.http.streamer.HttpResponseModel;
+import nya.miku.wishmaster.http.streamer.HttpStreamer;
+import nya.miku.wishmaster.http.streamer.HttpWrongStatusCodeException;
 
 public class TohnoChanModule extends AbstractKusabaModule {
     private static final String CHAN_NAME = "tohno-chan.com";
@@ -54,17 +61,19 @@ public class TohnoChanModule extends AbstractKusabaModule {
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "vg", "Video Games", "Media/Entertainment", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "foe", "Touhou", "Media/Entertainment", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "mp3", "Music", "Media/Entertainment", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "kf", "Kemono Friends", "Media/Entertainment", false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "vn", "Visual Novels", "Media/Entertainment", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "fig", "Collectibles", "Hobbies/Interests", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "navi", "Science & technology", "Hobbies/Interests", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "cr", "Creativity", "Hobbies/Interests", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "so", "Ronery", "General discussion", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "mai", "Waifu", "General discussion", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "ot", "Otaku Tangents", "Broad General discussion", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "ns", "Hentai", "Other", false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "ot", "Otaku Tangents", "General discussion", false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "ns", "Hentai", "Other", true),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "kf", "Kemono Friends", "Other", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "pic", "Dump", "Other", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "lol", "Funposting", "Other", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "tat", "Debates", "Other", false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "fb", "Feedback", "Other", false),
     };
     
     public TohnoChanModule(SharedPreferences preferences, Resources resources) {
@@ -124,7 +133,39 @@ public class TohnoChanModule extends AbstractKusabaModule {
         model.allowCustomMark = true;
         model.customMarkDescription = "Spoiler";
         model.markType = BoardModel.MARK_BBCODE;
+        model.catalogAllowed = true;
         return model;
+    }
+
+    @Override
+    public ThreadModel[] getCatalog(String boardName, int catalogType, ProgressListener listener, CancellableTask task, ThreadModel[] oldList)
+            throws Exception {
+        UrlPageModel urlModel = new UrlPageModel();
+        urlModel.chanName = getChanName();
+        urlModel.type = UrlPageModel.TYPE_CATALOGPAGE;
+        urlModel.boardName = boardName;
+        String url = buildUrl(urlModel);
+
+        HttpResponseModel responseModel = null;
+        TohnoChanCatalogReader in = null;
+        HttpRequestModel rqModel = HttpRequestModel.builder().setGET().setCheckIfModified(oldList != null).build();
+        try {
+            responseModel = HttpStreamer.getInstance().getFromUrl(url, rqModel, httpClient, listener, task);
+            if (responseModel.statusCode == 200) {
+                in = new TohnoChanCatalogReader(responseModel.stream);
+                if (task != null && task.isCancelled()) throw new Exception("interrupted");
+                return in.readPage();
+            } else {
+                if (responseModel.notModified()) return oldList;
+                throw new HttpWrongStatusCodeException(responseModel.statusCode, responseModel.statusCode + " - " + responseModel.statusReason);
+            }
+        } catch (Exception e) {
+            if (responseModel != null) HttpStreamer.getInstance().removeFromModifiedMap(url);
+            throw e;
+        } finally {
+            IOUtils.closeQuietly(in);
+            if (responseModel != null) responseModel.release();
+        }
     }
     
     @Override
@@ -147,7 +188,25 @@ public class TohnoChanModule extends AbstractKusabaModule {
                 addString("postpassword", model.password);
         setSendPostEntityAttachments(model, postEntityBuilder);
     }
-    
+
+    @Override
+    public String buildUrl(UrlPageModel model) throws IllegalArgumentException {
+        if (!model.chanName.equals(getChanName())) throw new IllegalArgumentException("wrong chan");
+        if (model.type == UrlPageModel.TYPE_CATALOGPAGE) return getUsingUrl() + model.boardName + "/catalog.html";
+        return WakabaUtils.buildUrl(model, getUsingUrl());
+    }
+
+    @Override
+    public UrlPageModel parseUrl(String url) throws IllegalArgumentException {
+        UrlPageModel model = WakabaUtils.parseUrl(url, getChanName(), getUsingDomain());
+        if (model.type == UrlPageModel.TYPE_OTHERPAGE && model.otherPath != null && model.otherPath.endsWith("/catalog.html")) {
+            model.type = UrlPageModel.TYPE_CATALOGPAGE;
+            model.boardName = model.otherPath.substring(0, model.otherPath.length() - 13);
+            model.otherPath = null;
+        }
+        return model;
+    }
+
     @SuppressLint("SimpleDateFormat")
     private static class TohnoChanReader extends KusabaReader {
         private static final DateFormat DATE_FORMAT;
@@ -208,5 +267,5 @@ public class TohnoChanModule extends AbstractKusabaModule {
             }
         }
     }
-    
+
 }

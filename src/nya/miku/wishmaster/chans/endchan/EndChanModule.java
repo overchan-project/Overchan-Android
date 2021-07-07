@@ -130,7 +130,6 @@ public class EndChanModule extends AbstractLynxChanModule {
     public void addPreferencesOnScreen(PreferenceGroup preferenceGroup) {
         addPasswordPreference(preferenceGroup);
         if (canHttps()) addHttpsPreference(preferenceGroup, useHttpsDefaultValue());
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addDomainPreferences(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);

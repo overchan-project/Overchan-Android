@@ -70,9 +70,9 @@ public class ArhivachModule extends CloudflareChanModule {
 
     private static final Pattern INDEX_PAGE_PATTERN = Pattern.compile("index/(\\d+)/?(.*)");
     static final String CHAN_NAME = "Arhivach.org";
-    private static final String DEFAULT_DOMAIN = "arhivach.ng";
+    private static final String DEFAULT_DOMAIN = "arhivach.net";
     private static final String ONION_DOMAIN = "arhivachovtj2jrp.onion";
-    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN, ONION_DOMAIN, "arhivach.org", "arhivach.tk", "arhivach.cf" };
+    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN, ONION_DOMAIN, "arhivach.org", "arhivach.ng" };
 
     private static final String PREF_KEY_USE_ONION = "PREF_KEY_USE_ONION";
     private static final String PREF_KEY_DOMAIN = "PREF_KEY_DOMAIN";
@@ -137,7 +137,6 @@ public class ArhivachModule extends CloudflareChanModule {
         preferenceGroup.addPreference(onionPref);
         httpsPref.setDependency(getSharedKey(PREF_KEY_USE_ONION));
         domainPref.setDependency(getSharedKey(PREF_KEY_USE_ONION));
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
     }

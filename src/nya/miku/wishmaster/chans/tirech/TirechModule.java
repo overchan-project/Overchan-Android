@@ -141,7 +141,6 @@ public class TirechModule extends AbstractWakabaModule {
         preferenceGroup.addPreference(domainPref);
         addHttpsPreference(preferenceGroup, true);
         addPasswordPreference(preferenceGroup);
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
     }

@@ -18,6 +18,7 @@
 
 package nya.miku.wishmaster.chans.cirno;
 
+import java.nio.charset.Charset;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
@@ -32,10 +33,12 @@ import nya.miku.wishmaster.api.interfaces.CancellableTask;
 import nya.miku.wishmaster.api.interfaces.ProgressListener;
 import nya.miku.wishmaster.api.models.BoardModel;
 import nya.miku.wishmaster.api.models.DeletePostModel;
+import nya.miku.wishmaster.api.models.SendPostModel;
 import nya.miku.wishmaster.api.models.SimpleBoardModel;
 import nya.miku.wishmaster.api.models.ThreadModel;
 import nya.miku.wishmaster.api.models.UrlPageModel;
 import nya.miku.wishmaster.api.util.ChanModels;
+import nya.miku.wishmaster.http.ExtendedMultipartBuilder;
 import nya.miku.wishmaster.http.streamer.HttpWrongStatusCodeException;
 
 public class OwlchanModule extends AbstractKusabaModule {
@@ -157,6 +160,12 @@ public class OwlchanModule extends AbstractKusabaModule {
         return board;
     }
     
+    @Override
+    protected void setSendPostEntity(SendPostModel model, ExtendedMultipartBuilder postEntityBuilder) throws Exception {
+        super.setSendPostEntity(model, postEntityBuilder);
+        postEntityBuilder.setCharset(Charset.forName("UTF-8"));
+    }
+
     @Override
     protected String getDeleteFormValue(DeletePostModel model) {
         return "Удалить";

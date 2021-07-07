@@ -20,12 +20,11 @@ package nya.miku.wishmaster.chans.fourchan;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -91,7 +90,7 @@ public class FourchanModule extends CloudflareChanModule {
     private boolean usingPasscode = false;
     
     private Map<String, BoardModel> boardsMap = null;
-    private String[] iconIds = null;
+    private Map<String, List<String>> iconIdsMap = null;
     
     private static final Pattern ERROR_POSTING = Pattern.compile("<span id=\"errmsg\"(?:[^>]*)>(.*?)(?:</span>|<br)");
     private static final Pattern SUCCESS_POSTING = Pattern.compile("<!-- thread:(\\d+),no:(\\d+) -->");
@@ -311,48 +310,45 @@ public class FourchanModule extends CloudflareChanModule {
     
     @Override
     public SimpleBoardModel[] getBoardsList(ProgressListener listener, CancellableTask task, SimpleBoardModel[] oldBoardsList) throws Exception {
-        List<SimpleBoardModel> list = new ArrayList<SimpleBoardModel>();
-        Map<String, BoardModel> newMap = new HashMap<String, BoardModel>();
+        List<SimpleBoardModel> list = new ArrayList<>();
+        Map<String, BoardModel> newMap = new HashMap<>();
         
         String url = (useHttps() ? "https://" : "http://") + "a.4cdn.org/boards.json";
         JSONObject boardsJson = downloadJSONObject(url, (oldBoardsList != null && boardsMap != null), listener, task);
         if (boardsJson == null) return oldBoardsList;
         JSONArray boards = boardsJson.getJSONArray("boards");
-        
-        String[] icons = null;
-        try {
-            JSONObject flagsJson = boardsJson.getJSONObject("troll_flags");
-            if (flagsJson.length() > 0) {
-                Map<String, String> flagsMap = new TreeMap<>();
-                flagsMap.put("0", "Geographic Location");
-                Iterator<String> it = flagsJson.keys();
-                while (it.hasNext()) {
-                    String key = it.next();
-                    flagsMap.put(key, flagsJson.getString(key));
-                }
-                iconIds = flagsMap.keySet().toArray(new String[flagsMap.size()]);
-                icons = flagsMap.values().toArray(new String[flagsMap.size()]);
-            }
-        } catch (Exception e) {
-            iconIds = null;    // Troll flags were disabled
-        }
-        
+
         for (int i=0, len=boards.length(); i<len; ++i) {
             JSONObject board = boards.getJSONObject(i);
             BoardModel model = FourchanJsonMapper.mapBoardModel(board);
-            if ((icons != null) && (board.optInt("troll_flags", 0) == 1))
-            {
-                model.allowIcons = true;
-                model.iconDescriptions = icons;
-            }
+            try {
+                JSONObject flagsJson = board.getJSONObject("board_flags");
+                if (flagsJson.length() > 0) {
+                    List<String> iconIdsList = new ArrayList<>(flagsJson.keySet());
+                    Collections.sort(iconIdsList);
+                    List<String> iconDescriptionsList = new ArrayList<>();
+                    for (String iconId : iconIdsList) {
+                        iconDescriptionsList.add(flagsJson.getString(iconId));
+                    }
+                    if (!iconIdsList.get(0).equals("0")) {
+                        iconIdsList.add(0, "0");
+                        iconDescriptionsList.add(0, model.boardName.equals("pol") ?
+                                "Geographic Location" : "None");
+                    }
+                    model.allowIcons = true;
+                    model.iconDescriptions = iconDescriptionsList.toArray(new String[0]);
+                    if (iconIdsMap == null) iconIdsMap = new HashMap<>();
+                    iconIdsMap.put(model.boardName, iconIdsList);
+                }
+            } catch (Exception e) { /* Board flags were disabled */ }
             newMap.put(model.boardName, model);
             list.add(new SimpleBoardModel(model));
         }
         
         boardsMap = newMap;
-        return list.toArray(new SimpleBoardModel[list.size()]);
+        return list.toArray(new SimpleBoardModel[0]);
     }
-    
+
     @Override
     public BoardModel getBoard(String shortName, ProgressListener listener, CancellableTask task) throws Exception {
         if (boardsMap == null) {
@@ -467,8 +463,9 @@ public class FourchanModule extends CloudflareChanModule {
         }
         if (model.attachments != null && model.attachments.length != 0) postEntityBuilder.addFile("upfile", model.attachments[0]);
         if (model.custommark) postEntityBuilder.addString("spoiler", "on");
-        if (iconIds != null && model.icon > -1 && model.icon < iconIds.length) {
-            postEntityBuilder.addString("flag", iconIds[model.icon]);
+        if (model.icon > -1 && iconIdsMap != null && iconIdsMap.containsKey(model.boardName)
+                && model.icon < iconIdsMap.get(model.boardName).size()) {
+            postEntityBuilder.addString("flag", iconIdsMap.get(model.boardName).get(model.icon));
         }
         
         HttpRequestModel request = HttpRequestModel.builder().setPOST(postEntityBuilder.build()).build();

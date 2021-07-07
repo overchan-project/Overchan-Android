@@ -37,6 +37,8 @@ import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceGroup;
 import android.support.v4.content.res.ResourcesCompat;
+
+import cz.msebera.android.httpclient.HttpEntity;
 import nya.miku.wishmaster.R;
 import nya.miku.wishmaster.api.CloudflareChanModule;
 import nya.miku.wishmaster.api.interfaces.CancellableTask;
@@ -62,6 +64,7 @@ import nya.miku.wishmaster.http.recaptcha.Recaptcha2;
 import nya.miku.wishmaster.http.recaptcha.Recaptcha2solved;
 import nya.miku.wishmaster.http.streamer.HttpRequestModel;
 import nya.miku.wishmaster.http.streamer.HttpStreamer;
+import nya.miku.wishmaster.http.streamer.HttpWrongStatusCodeException;
 import nya.miku.wishmaster.lib.org_json.JSONArray;
 import nya.miku.wishmaster.lib.org_json.JSONException;
 import nya.miku.wishmaster.lib.org_json.JSONObject;
@@ -153,7 +156,6 @@ public class AllchanModule extends CloudflareChanModule {
         preferenceGroup.addPreference(captchaPreference);
         addPasswordPreference(preferenceGroup);
         addHttpsPreference(preferenceGroup, true);
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
         
@@ -185,7 +187,7 @@ public class AllchanModule extends CloudflareChanModule {
     
     private int getUsingCaptchaType() {
         String key = preferences.getString(getSharedKey(PREF_KEY_CAPTCHA_TYPE), CAPTCHA_TYPE_DEFAULT);
-        if (Arrays.asList(CAPTCHA_TYPES_KEYS).indexOf(key) == -1) key = CAPTCHA_TYPE_DEFAULT;
+        if (!Arrays.asList(CAPTCHA_TYPES_KEYS).contains(key)) key = CAPTCHA_TYPE_DEFAULT;
         switch (key) {
             case "node-captcha":
                 return CAPTCHA_NODE;
@@ -228,7 +230,7 @@ public class AllchanModule extends CloudflareChanModule {
         model.chan = CHAN_NAME;
         model.boardName = json.getString("name");
         model.boardDescription = json.optString("title", model.boardName);
-        model.nsfw = SFW_BOARDS.indexOf(model.boardName) == -1;
+        model.nsfw = !SFW_BOARDS.contains(model.boardName);
         model.uniqueAttachmentNames = true;
         model.timeZoneId = "GMT+3";
         model.defaultUserName = json.optString("defaultUserName", "Аноним");
@@ -253,7 +255,8 @@ public class AllchanModule extends CloudflareChanModule {
         model.markType = BoardModel.MARK_BBCODE;
         model.firstPage = 0;
         model.lastPage = BoardModel.LAST_PAGE_UNDEFINED;
-        model.searchAllowed = false;
+        model.searchAllowed = true;
+        model.searchPagination = true;
         model.catalogAllowed = true;
         model.catalogTypeDescriptions = CATALOG_DESCRIPTIONS;
         addToMap(model);
@@ -277,7 +280,7 @@ public class AllchanModule extends CloudflareChanModule {
     @Override
     public ThreadModel[] getThreadsList(String boardName, int page, ProgressListener listener, CancellableTask task, ThreadModel[] oldList)
             throws Exception {
-        String url = getUsingUrl() + boardName + "/" + Integer.toString(page) + ".json";
+        String url = getUsingUrl() + boardName + "/" + page + ".json";
         JSONObject json = downloadJSONObject(url, oldList != null, listener, task);
         if (json == null) return oldList;
         try {
@@ -559,8 +562,8 @@ public class AllchanModule extends CloudflareChanModule {
         if (model.attachments != null && model.attachments.length > 0) {
             for (int i=0; i<model.attachments.length; ++i) {
                 postEntityBuilder.
-                        addFile("file_" + Integer.toString(i+1), model.attachments[i], model.randomHash).
-                        addString("file_" + Integer.toString(i+1) + "_rating", rating);
+                        addFile("file_" + (i + 1), model.attachments[i], model.randomHash).
+                        addString("file_" + (i + 1) + "_rating", rating);
             }
         }
         
@@ -606,6 +609,42 @@ public class AllchanModule extends CloudflareChanModule {
             if (error.length() > 0) throw new Exception(error);
         }
         return null;
+    }
+
+    @Override
+    public PostModel[] search(String boardName, String searchRequest, int page, ProgressListener listener, CancellableTask task) throws Exception {
+        String url = getUsingUrl() + "action/search";
+        HttpEntity postEntity = ExtendedMultipartBuilder.create().
+                addString("query", searchRequest).
+                addString("boardName", boardName).
+                addString("page", Integer.toString(page)).
+                build();
+        HttpRequestModel request = HttpRequestModel.builder().setPOST(postEntity).build();
+        JSONObject response;
+        try {
+            response = HttpStreamer.getInstance().getJSONObjectFromUrl(url, request, httpClient, listener, task, true);
+        } catch (HttpWrongStatusCodeException e) {
+            if (canCloudflare()) checkCloudflareError(e, url);
+            throw e;
+        }
+        JSONArray posts = response.optJSONArray("searchResults");
+        PostModel[] result = new PostModel[posts.length()];
+        for (int i=0; i<posts.length(); ++i) {
+            JSONObject json = posts.getJSONObject(i);
+            PostModel model = new PostModel();
+            model.number = json.optString("postNumber", null);
+            if (model.number == null) throw new JSONException("Search error");
+            model.parentThread = json.optString("threadNumber");
+            model.name = "";
+            model.subject = json.optString("subject");
+            model.comment = json.optString("text");
+            if (model.comment.length() > 0 && model.subject.length() > 1
+                    && model.comment.startsWith(model.subject.substring(0, model.subject.length()-1))) {
+                model.subject = "";
+            }
+            result[i] = model;
+        }
+        return result;
     }
     
     @Override

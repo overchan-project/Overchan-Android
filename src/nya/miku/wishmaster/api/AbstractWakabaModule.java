@@ -136,7 +136,6 @@ public abstract class AbstractWakabaModule extends CloudflareChanModule {
     public void addPreferencesOnScreen(PreferenceGroup preferenceGroup) {
         addPasswordPreference(preferenceGroup);
         if (canHttps()) addHttpsPreference(preferenceGroup, useHttpsDefaultValue());
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
     }

@@ -153,7 +153,6 @@ public class TumbachModule extends CloudflareChanModule {
         preferenceGroup.addPreference(captchaPreference);
         addPasswordPreference(preferenceGroup);
         addHttpsPreference(preferenceGroup, true);
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
         

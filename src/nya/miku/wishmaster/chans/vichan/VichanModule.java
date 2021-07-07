@@ -18,9 +18,12 @@
 
 package nya.miku.wishmaster.chans.vichan;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
+import android.preference.CheckBoxPreference;
+import android.preference.PreferenceGroup;
 import android.support.v4.content.res.ResourcesCompat;
 
 import nya.miku.wishmaster.R;
@@ -32,17 +35,17 @@ import nya.miku.wishmaster.api.models.SendPostModel;
 import nya.miku.wishmaster.api.models.SimpleBoardModel;
 import nya.miku.wishmaster.api.models.UrlPageModel;
 import nya.miku.wishmaster.api.util.ChanModels;
+import nya.miku.wishmaster.api.util.LazyPreferences;
 
 public class VichanModule extends AbstractVichanModule {
     private static final String CHAN_NAME = "pl.vichan.net";
+    private static final String DEFAULT_DOMAIN = "pl.vichan.net";
+    private static final String ONION_DOMAIN = "vichan6jaktoao2o.onion";
+    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN, ONION_DOMAIN, "vichan.org" };
     private static final SimpleBoardModel[] BOARDS = new SimpleBoardModel[] {
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "3", "BEBIN", "Ogólne", true),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "b", "Radom", "Ogólne", true),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "cp", "Chłodne Pasty", "Ogólne", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "id", "Inteligentne dyskusje", "Ogólne", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "int", "True International", "Ogólne", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "r+oc", "Prośby + Oryginalna zawartość", "Ogólne", true),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "slav", "Słowianie", "Ogólne", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "veto", "Wolne! Nie pozwalam!", "Ogólne", true),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "waifu", "Waifu i husbando", "Ogólne", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "wiz", "Mizoginia", "Ogólne", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "btc", "Biznes i ekonomia", "Tematyczne", false),
@@ -59,13 +62,11 @@ public class VichanModule extends AbstractVichanModule {
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "vg", "Gry video i online", "Tematyczne", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "a", "Anime i Manga", "Kultura", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "ac", "Komiks i animacja", "Kultura", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "az", "Azja", "Kultura", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "fr", "Filozofia & religia", "Kultura", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "hk", "Historia & Kultura", "Kultura", false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "fr", "Filozofia i religia", "Kultura", false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "hk", "Historia i kultura", "Kultura", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "lit", "Literatura", "Kultura", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "mu", "Muzyka", "Kultura", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "tv", "Filmy i seriale", "Kultura", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "vp", "Pokémon", "Kultura", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "x", "Wróżbita Maciej", "Kultura", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "med", "Medyczny", "Życiowe", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "pr", "Prawny", "Życiowe", false),
@@ -75,46 +76,77 @@ public class VichanModule extends AbstractVichanModule {
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "soc", "Socjalizacja i atencja", "Życiowe", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "sr", "Samorozwój", "Życiowe", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "swag", "Styl i wygląd", "Życiowe", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "trap", "Transseksualizm", "Życiowe", true),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "chan", "Chany i ich kultura", "Chanowe", false),
             ChanModels.obtainSimpleBoardModel(CHAN_NAME, "meta", "Administracyjny", "Chanowe", false),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "mit", "Mitomania", "Chanowe", true),
     };
+    protected static final String PREF_KEY_USE_ONION = "PREF_KEY_USE_ONION";
 
     public VichanModule(SharedPreferences preferences, Resources resources) {
         super(preferences, resources);
     }
-    
+
     @Override
     public String getChanName() {
         return CHAN_NAME;
     }
-    
+
     @Override
     public String getDisplayingName() {
         return "Polski vichan";
     }
-    
+
     @Override
     public Drawable getChanFavicon() {
         return ResourcesCompat.getDrawable(resources, R.drawable.favicon_vichan, null);
     }
-    
+
+    @Override
+    protected String getCloudflareCookieDomain() {
+        return DEFAULT_DOMAIN;
+    }
+
+    @Override
+    public void addPreferencesOnScreen(PreferenceGroup preferenceGroup) {
+        Context context = preferenceGroup.getContext();
+        addPasswordPreference(preferenceGroup);
+        CheckBoxPreference httpsPref = addHttpsPreference(preferenceGroup, true);
+        CheckBoxPreference onionPref = new LazyPreferences.CheckBoxPreference(context);
+        onionPref.setTitle(R.string.pref_use_onion);
+        onionPref.setSummary(R.string.pref_use_onion_summary);
+        onionPref.setKey(getSharedKey(PREF_KEY_USE_ONION));
+        onionPref.setDefaultValue(false);
+        onionPref.setDisableDependentsState(true);
+        preferenceGroup.addPreference(onionPref);
+        httpsPref.setDependency(getSharedKey(PREF_KEY_USE_ONION));
+        addProxyPreferences(preferenceGroup);
+        addClearCookiesPreference(preferenceGroup);
+    }
+
+    @Override
+    protected boolean canCloudflare() {
+        return true;
+    }
+
     @Override
     protected String getUsingDomain() {
-        return "pl.vichan.net";
+        return preferences.getBoolean(getSharedKey(PREF_KEY_USE_ONION), false) ? ONION_DOMAIN : DEFAULT_DOMAIN;
     }
-    
+
+    @Override
+    protected String[] getAllDomains() {
+        return DOMAINS;
+    }
+
     @Override
     protected boolean canHttps() {
         return true;
     }
-    
+
     @Override
     protected SimpleBoardModel[] getBoardsList() {
         return BOARDS;
     }
-    
+
     @Override
     public BoardModel getBoard(String shortName, ProgressListener listener, CancellableTask task) throws Exception {
         BoardModel model = super.getBoard(shortName, listener, task);
@@ -123,16 +155,16 @@ public class VichanModule extends AbstractVichanModule {
         model.customMarkDescription = "Spoiler";
         return model;
     }
-    
+
     @Override
     public String sendPost(SendPostModel model, ProgressListener listener, CancellableTask task) throws Exception {
         super.sendPost(model, listener, task);
         return null;
     }
-    
+
     @Override
     public UrlPageModel parseUrl(String url) throws IllegalArgumentException {
-        return super.parseUrl(url.replaceAll("-\\w+.*html", ".html"));
+        return super.parseUrl(url.replaceAll("[-+]\\w+.*html", ".html"));
     }
 
     @Override

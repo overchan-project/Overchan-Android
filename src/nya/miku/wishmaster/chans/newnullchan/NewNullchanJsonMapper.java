@@ -140,6 +140,9 @@ public class NewNullchanJsonMapper {
         }
         model.comment = RegexUtils.replaceAll(model.comment, SPOILER_MARK_PATTERN, "<span class=\"spoiler\">$1</span>");
         model.comment = RegexUtils.replaceAll(model.comment, BLOCKQUOTE_MARK_PATTERN, "<span class=\"quote\">$1</span>");
+        if (object.optBoolean("isUserBanned", false)) {
+            model.comment += "<br/><br/><font color=\"#CD5C5C\"><b>(USER WAS BANNED FOR THIS POST)</b></font>";
+        }
         // TODO: convert content of <pre> to html
         JSONArray attachments = object.optJSONArray("attachments");
         if (attachments != null && attachments.length() > 0) {

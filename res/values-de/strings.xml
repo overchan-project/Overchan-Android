@@ -462,8 +462,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     <string name="pref_use_onion_summary">Eine Verbindung durch das Tor-Netzwerk ist erfordert</string>
     <string name="pref_use_https">HTTPS verwenden</string>
     <string name="pref_use_https_summary">Sichere, verschlüsselte Verbindung</string>
-    <string name="pref_cf_recaptcha_fallback">Cloudflare Recaptcha fallback</string>
-    <string name="pref_cf_recaptcha_fallback_summary">Den Kompatibilitätsmodus verwenden</string>
     <string name="pref_domain">Domain</string>
     <string name="pref_domain_summary">Reserved domains: %s</string>
     <string name="pref_only_new_posts">Nur neue Posts</string>

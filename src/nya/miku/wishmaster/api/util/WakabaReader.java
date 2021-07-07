@@ -66,7 +66,7 @@ public class WakabaReader implements Closeable {
     private static final Pattern ATTACHMENT_PX_SIZE_PATTERN = Pattern.compile("(\\d+)[x×х](\\d+)"); // \u0078 \u00D7 \u0445
     private static final Pattern ATTACHMENT_ORIGINAL_NAME_PATTERN = Pattern.compile("\\s*,?([^<\\)]*)");
     
-    private static final char[] DATA_START = "<form id=\"delform\"".toCharArray();
+    private static final char[] DATA_START = "<form id=\"delform".toCharArray();
     
     private static final char[] BLOCKQUOTE_OPEN = "<blockquote".toCharArray();
     private static final char[] BLOCKQUOTE_CLOSE = "</blockquote>".toCharArray();

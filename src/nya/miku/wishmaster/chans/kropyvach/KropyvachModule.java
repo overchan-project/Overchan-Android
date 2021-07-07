@@ -58,8 +58,8 @@ import nya.miku.wishmaster.lib.org_json.JSONObject;
 
 public class KropyvachModule extends AbstractVichanModule {
     private static final String CHAN_NAME = "kropyva.ch";
-    private static final String DEFAULT_DOMAIN = "www.kropyva.ch";
-    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN, "kropyva.ch" };
+    private static final String DEFAULT_DOMAIN = "kropyva.ch";
+    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN };
     private static final String[] ATTACHMENT_FORMATS = new String[] { "jpg", "jpeg", "png", "gif", "webm" };
     private static final SimpleBoardModel[] BOARDS = new SimpleBoardModel[] {
         ChanModels.obtainSimpleBoardModel(CHAN_NAME, "a", "Аніме", "", false),

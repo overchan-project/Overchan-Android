@@ -23,8 +23,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.text.DateFormat;
+import java.text.DateFormatSymbols;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -56,15 +59,21 @@ import nya.miku.wishmaster.api.util.RegexUtils;
 import nya.miku.wishmaster.api.util.UrlPathUtils;
 import nya.miku.wishmaster.api.util.WakabaReader;
 import nya.miku.wishmaster.api.util.WakabaUtils;
+import nya.miku.wishmaster.common.Logger;
 import nya.miku.wishmaster.http.ExtendedMultipartBuilder;
 import nya.miku.wishmaster.lib.org_json.JSONArray;
 import nya.miku.wishmaster.lib.org_json.JSONObject;
 
 public abstract class AbstractInstant0chan extends AbstractKusabaModule {
+    private static final String TAG = "AbstractInstant0chan";
     public AbstractInstant0chan(SharedPreferences preferences, Resources resources) {
         super(preferences, resources);
     }
-    
+
+    protected boolean availableUserboardsList() {
+        return true;
+    }
+
     @Override
     public SimpleBoardModel[] getBoardsList(ProgressListener listener, CancellableTask task, SimpleBoardModel[] oldBoardsList) throws Exception {
         List<SimpleBoardModel> boardsList = new ArrayList<>();
@@ -87,19 +96,21 @@ public abstract class AbstractInstant0chan extends AbstractKusabaModule {
                 }
             }
         } catch (Exception e) {}
-        url = getUsingUrl() + "boards20.json";
-        try {
-            json = downloadJSONArray(url, false, listener, task);
-            for (int i=0; i<json.length(); ++i) {
-                SimpleBoardModel model = new SimpleBoardModel();
-                model.chan = getChanName();
-                model.boardName = json.getJSONObject(i).getString("name");
-                model.boardDescription = StringEscapeUtils.unescapeHtml4(json.getJSONObject(i).optString("desc", model.boardName));
-                model.boardCategory = "2.0";
-                model.nsfw = true;
-                boardsList.add(model);
-            }
-        } catch (Exception e) {}
+        if (availableUserboardsList()) {
+            url = getUsingUrl() + "boards20.json";
+            try {
+                json = downloadJSONArray(url, false, listener, task);
+                for (int i=0; i<json.length(); ++i) {
+                    SimpleBoardModel model = new SimpleBoardModel();
+                    model.chan = getChanName();
+                    model.boardName = json.getJSONObject(i).getString("name");
+                    model.boardDescription = StringEscapeUtils.unescapeHtml4(json.getJSONObject(i).optString("desc", model.boardName));
+                    model.boardCategory = "2.0";
+                    model.nsfw = true;
+                    boardsList.add(model);
+                }
+            } catch (Exception e) {}
+        }
         return boardsList.toArray(new SimpleBoardModel[0]);
     }
     
@@ -256,10 +267,10 @@ public abstract class AbstractInstant0chan extends AbstractKusabaModule {
     
     @Override
     protected List<? extends NameValuePair> getReportFormAllValues(DeletePostModel model) {
-        List<NameValuePair> pairs = new ArrayList<NameValuePair>();
+        List<NameValuePair> pairs = new ArrayList<>();
         pairs.add(new BasicNameValuePair("board", model.boardName));
         pairs.add(new BasicNameValuePair("post[]", model.postNumber));
-        pairs.add(new BasicNameValuePair("reportpost", "Отправить"));
+        pairs.add(new BasicNameValuePair("reportpost", "Пожаловаться"));
         return pairs;
     }
     
@@ -307,20 +318,35 @@ public abstract class AbstractInstant0chan extends AbstractKusabaModule {
         private static final char[] FILTER_ATTACHMENT_CLOSE = "</figcaption>".toCharArray();
         private static final char[] FILTER_EMBEDDED_OPEN = "<figure class=\"multiembed video-embed\"".toCharArray();
         private static final char[] FILTER_EMBEDDED_CLOSE = "</figure>".toCharArray();
+        private static final char[] FILTER_THREAD_STATUS = "class=\"posthead ".toCharArray();
         
         private static final Pattern PATTERN_EMBEDDED_URL =
                 Pattern.compile("<a.+?href=\"(.+?)\".*?>(.+?)?</a>", Pattern.DOTALL);
         private static final Pattern PATTERN_EMBEDDED_THUMBNAIL =
                 Pattern.compile("<img class=\"embed-thumbnail\".+?src=\"(.+?)\"", Pattern.DOTALL);
         private static final DateFormat DATE_FORMAT;
+        private static final DateFormat DATE_FORMAT_OLD;
         static {
-            DATE_FORMAT = new SimpleDateFormat("yy/MM/dd(EEE)HH:mm", Locale.US);
+            DateFormatSymbols symbols = new DateFormatSymbols();
+            symbols.setShortMonths(new String[] {
+                    "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"
+            });
+            DATE_FORMAT = new SimpleDateFormat("yyyy MMM dd HH:mm:ss", symbols) {
+                @Override
+                public Date parse(String date) throws ParseException {
+                    return super.parse(date.replaceAll("(?:\\D+)(\\d.+)", "$1"));
+                }
+            };
             DATE_FORMAT.setTimeZone(TimeZone.getTimeZone("GMT+3"));
+
+            DATE_FORMAT_OLD = new SimpleDateFormat("yy/MM/dd(EEE)HH:mm", Locale.US);
+            DATE_FORMAT_OLD.setTimeZone(TimeZone.getTimeZone("GMT+3"));
         }
         
         private int curNumberPos = 0;
         private int curAttachmentPos = 0;
         private int curEmbedPos = 0;
+        private int curThreadStatusPos = 0;
         
         public Instant0chanReader(InputStream in, DateFormat dateFormat, boolean canCloudflare) {
             super(in, dateFormat, canCloudflare, ~FLAG_HANDLE_EMBEDDED_POST_POSTPROCESS);
@@ -343,7 +369,19 @@ public abstract class AbstractInstant0chan extends AbstractKusabaModule {
             } else {
                 if (curNumberPos != 0) curNumberPos = ch == FILTER_POST_NUMBER[0] ? 1 : 0;
             }
-            
+
+            if (ch == FILTER_THREAD_STATUS[curThreadStatusPos]) {
+                ++curThreadStatusPos;
+                if (curThreadStatusPos == FILTER_THREAD_STATUS.length) {
+                    String status = readUntilSequence("\"".toCharArray());
+                    if (status.contains("locked")) currentThread.isClosed = true;
+                    if (status.contains("stickied")) currentThread.isSticky = true;
+                    curThreadStatusPos = 0;
+                }
+            } else {
+                if (curThreadStatusPos != 0) curThreadStatusPos = ch == FILTER_THREAD_STATUS[0] ? 1 : 0;
+            }
+
             if (ch == FILTER_ATTACHMENT_OPEN[curAttachmentPos]) {
                 ++curAttachmentPos;
                 if (curAttachmentPos == FILTER_ATTACHMENT_OPEN.length) {
@@ -367,8 +405,18 @@ public abstract class AbstractInstant0chan extends AbstractKusabaModule {
         
         @Override
         protected void parseDate(String date) {
-            date = date.replace("&#35;", "");
-            super.parseDate(date);
+            date = RegexUtils.removeHtmlTags(date).trim();
+            if (date.length() > 0) {
+                try {
+                    currentPost.timestamp = dateFormat.parse(date).getTime();
+                } catch (Exception e) {
+                    try {
+                        currentPost.timestamp = DATE_FORMAT_OLD.parse(date).getTime();
+                    } catch (Exception e2) {
+                        Logger.e(TAG, "cannot parse date; make sure you choose the right DateFormat for this chan", e);
+                    }
+                }
+            }
         }
         
         protected void parseEmbedded(String data) {

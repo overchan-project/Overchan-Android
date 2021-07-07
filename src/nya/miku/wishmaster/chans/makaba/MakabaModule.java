@@ -25,8 +25,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -54,12 +55,16 @@ import nya.miku.wishmaster.api.util.UrlPathUtils;
 import nya.miku.wishmaster.common.IOUtils;
 import nya.miku.wishmaster.common.Logger;
 import nya.miku.wishmaster.http.ExtendedMultipartBuilder;
+import nya.miku.wishmaster.http.hashwall.HashwallExceptionAntiDDOS;
+import nya.miku.wishmaster.http.interactive.InteractiveException;
 import nya.miku.wishmaster.http.recaptcha.Recaptcha2;
 import nya.miku.wishmaster.http.recaptcha.Recaptcha2solved;
 import nya.miku.wishmaster.http.streamer.HttpRequestException;
 import nya.miku.wishmaster.http.streamer.HttpRequestModel;
 import nya.miku.wishmaster.http.streamer.HttpResponseModel;
 import nya.miku.wishmaster.http.streamer.HttpStreamer;
+import nya.miku.wishmaster.http.streamer.HttpWrongResponseDetector;
+import nya.miku.wishmaster.http.streamer.HttpWrongResponseException;
 import nya.miku.wishmaster.http.streamer.HttpWrongStatusCodeException;
 import nya.miku.wishmaster.lib.org_json.JSONArray;
 import nya.miku.wishmaster.lib.org_json.JSONException;
@@ -107,16 +112,20 @@ public class MakabaModule extends CloudflareChanModule {
     private int captchaType;
 
     
-    /** карта досок из списка mobile.fcgi */
+    /** карта досок из списка boards.json (содержит только базовые параметры) */
     private Map<String, BoardModel> boardsMap = null;
-    /** дополнительная карта досок (для досок, которые отсутствуют в карте из mobile.fcgi) */
-    private Map<String, BoardModel> customBoardsMap = new HashMap<String, BoardModel>();
+    /** полноценная карта досок (содержит параметры посещенных досок) */
+    private Map<String, BoardModel> customBoardsMap = new HashMap<>();
     
     public MakabaModule(SharedPreferences preferences, Resources resources) {
         super(preferences, resources);
         updateDomain(
                 preferences.getString(getSharedKey(PREF_KEY_DOMAIN), DEFAULT_DOMAIN),
                 preferences.getBoolean(getSharedKey(PREF_KEY_USE_HTTPS_MAKABA), true));
+    }
+
+    public boolean canHashwall() {
+        return true;
     }
     
     @Override
@@ -133,6 +142,39 @@ public class MakabaModule extends CloudflareChanModule {
     public Drawable getChanFavicon() {
         return ResourcesCompat.getDrawable(resources, R.drawable.favicon_makaba, null);
     }
+
+    private static final HttpWrongResponseDetector hashwallDetector = new HttpWrongResponseDetector() {
+        @Override
+        public void check(final HttpResponseModel model) {
+            if (model.statusCode == 303 && model.locationHeader != null) {
+                throw new HttpWrongResponseException("Hashwall");
+            }
+            for (Header header: model.headers) {
+                if (header.getName().equalsIgnoreCase("Set-Cookie")) {
+                    Matcher m = PATTERN_HASHWALL_COOKIE.matcher(header.getValue());
+                    if (m.find()) throw new HttpWrongResponseException("Hashwall");
+                }
+            }
+        }
+    };
+
+    private void handleWrongResponse(String url, HttpWrongResponseException e) throws HttpWrongResponseException, InteractiveException {
+        if ("Hashwall".equals(e.getMessage())) {
+            String fixedUrl = fixRelativeUrl(url);
+            InteractiveException hwe = HashwallExceptionAntiDDOS.newInstance(fixedUrl, getChanName());
+            if (hwe != null) throw hwe;
+            else throw new HttpWrongResponseException(resources.getString(R.string.error_cloudflare_antiddos));
+        }
+        throw e;
+    }
+
+    private void checkForHashwall(String url, HttpResponseModel model) throws HttpWrongResponseException, InteractiveException {
+        try {
+            hashwallDetector.check(model);
+        } catch (HttpWrongResponseException e) {
+            handleWrongResponse(url, e);
+        }
+    }
     
     @Override
     protected void initHttpClient() {
@@ -142,6 +184,16 @@ public class MakabaModule extends CloudflareChanModule {
                 USERCODE_COOKIE_NAME,
                 preferences.getString(getSharedKey(PREF_KEY_USERCODE_COOKIE_VALUE), null));
         setPasscodeCookie();
+        if (canHashwall()) {
+            String name = preferences.getString(getSharedKey(PREF_KEY_HASHWALL_COOKIE_NAME), null);
+            String value = preferences.getString(getSharedKey(PREF_KEY_HASHWALL_COOKIE_VALUE), null);
+            String domain = preferences.getString(getSharedKey(PREF_KEY_HASHMWALL_COOKIE_DOMAIN), null);
+            if (name != null && value != null && domain != null) {
+                BasicClientCookie c = new BasicClientCookie(name, value);
+                c.setDomain(domain);
+                httpClient.getCookieStore().addCookie(c);
+            }
+        }
     }
     
     private void updateDomain(String domain, boolean useHttps) {
@@ -164,10 +216,17 @@ public class MakabaModule extends CloudflareChanModule {
     @Override
     public void saveCookie(Cookie cookie) {
         super.saveCookie(cookie);
-        if (cookie != null && cookie.getName().equals(USERCODE_COOKIE_NAME)) {
-            preferences.edit().
-                    putString(getSharedKey(PREF_KEY_USERCODE_COOKIE_DOMAIN), cookie.getDomain()).
-                    putString(getSharedKey(PREF_KEY_USERCODE_COOKIE_VALUE), cookie.getValue()).commit();
+        if (cookie != null) {
+            if (cookie.getName().equals(USERCODE_COOKIE_NAME)) {
+                preferences.edit().
+                        putString(getSharedKey(PREF_KEY_USERCODE_COOKIE_DOMAIN), cookie.getDomain()).
+                        putString(getSharedKey(PREF_KEY_USERCODE_COOKIE_VALUE), cookie.getValue()).commit();
+            } else if (canHashwall() && "Hashwall".equals(cookie.getComment())) {
+                preferences.edit().
+                        putString(getSharedKey(PREF_KEY_HASHWALL_COOKIE_NAME), cookie.getName()).
+                        putString(getSharedKey(PREF_KEY_HASHWALL_COOKIE_VALUE), cookie.getValue()).
+                        putString(getSharedKey(PREF_KEY_HASHMWALL_COOKIE_DOMAIN), cookie.getDomain()).commit();
+            }
         }
     }
     
@@ -179,6 +238,9 @@ public class MakabaModule extends CloudflareChanModule {
             remove(getSharedKey(PREF_KEY_USERCODE_COOKIE_VALUE)).
             remove(getSharedKey(PREF_KEY_NOCAPTCHA_COOKIE_DOMAIN)).
             remove(getSharedKey(PREF_KEY_NOCAPTCHA_COOKIE_VALUE)).
+            remove(getSharedKey(PREF_KEY_HASHWALL_COOKIE_NAME)).
+            remove(getSharedKey(PREF_KEY_HASHWALL_COOKIE_VALUE)).
+            remove(getSharedKey(PREF_KEY_HASHMWALL_COOKIE_DOMAIN)).
             commit();
     }
 
@@ -194,7 +256,7 @@ public class MakabaModule extends CloudflareChanModule {
                 USERCODE_NOCAPTCHA_COOKIE_NAME,
                 preferences.getString(getSharedKey(PREF_KEY_NOCAPTCHA_COOKIE_VALUE), null));
     }
-    
+
     private void addMobileAPIPreference(PreferenceGroup group) {
         final Context context = group.getContext();
         CheckBoxPreference mobileAPIPref = new LazyPreferences.CheckBoxPreference(context);
@@ -313,6 +375,7 @@ public class MakabaModule extends CloudflareChanModule {
         try {
             response = HttpStreamer.getInstance().getFromUrl(url, request, httpClient, null, task);
             if (response.statusCode != 301 && response.statusCode != 302) {
+                if (canHashwall()) checkForHashwall(url, response);
                 if (response.stream == null)
                     throw new HttpRequestException(new NullPointerException());
                 ByteArrayOutputStream output = new ByteArrayOutputStream(1024);
@@ -346,9 +409,9 @@ public class MakabaModule extends CloudflareChanModule {
 
     private int getUsingCaptchaType() {
         String key = preferences.getString(getSharedKey(PREF_KEY_CAPTCHA_TYPE), CAPTCHA_TYPE_DEFAULT);
-        if (Arrays.asList(CAPTCHA_TYPES_KEYS).indexOf(key) == -1) key = CAPTCHA_TYPE_DEFAULT;
+        if (!Arrays.asList(CAPTCHA_TYPES_KEYS).contains(key)) key = CAPTCHA_TYPE_DEFAULT;
         switch (key) {
-            case "2chaptcha":
+            case "2chcaptcha":
                 return CAPTCHA_2CHAPTCHA;
             case "recaptcha":
                 return CAPTCHA_RECAPTCHA;
@@ -357,13 +420,13 @@ public class MakabaModule extends CloudflareChanModule {
             case "mailru":
                 return CAPTCHA_MAILRU;
         }
-        throw new IllegalStateException();
+        throw new IllegalStateException("wrong captcha settings");
     }
 
     private String getUsingCaptchaKey() {
         switch(getUsingCaptchaType()) {
             case CAPTCHA_2CHAPTCHA:
-                return "2chaptcha";
+                return "2chcaptcha";
             case CAPTCHA_RECAPTCHA:
             case CAPTCHA_RECAPTCHA_FALLBACK:
                 return "recaptcha";
@@ -376,27 +439,31 @@ public class MakabaModule extends CloudflareChanModule {
     
     @Override
     public SimpleBoardModel[] getBoardsList(ProgressListener listener, CancellableTask task, SimpleBoardModel[] oldBoardsList) throws Exception {
-        List<SimpleBoardModel> list = new ArrayList<SimpleBoardModel>();
-        Map<String, BoardModel> newMap = new HashMap<String, BoardModel>();
-        
-        String url = domainUrl + "makaba/mobile.fcgi?task=get_boards";
-        
-        JSONObject mobileBoardsList = downloadJSONObject(url, (oldBoardsList != null && this.boardsMap != null), listener, task);
-        if (mobileBoardsList == null) return oldBoardsList;
-        
-        Iterator<String> it = mobileBoardsList.keys();
-        while (it.hasNext()) {
-            JSONArray category = mobileBoardsList.getJSONArray(it.next());
-            for (int i=0; i<category.length(); ++i) {
-                JSONObject currentBoard = category.getJSONObject(i);
-                BoardModel model = mapBoardModel(currentBoard, true, resources);
-                newMap.put(model.boardName, model);
-                list.add(new SimpleBoardModel(model));
-            }
+        List<SimpleBoardModel> list = new ArrayList<>();
+        Map<String, BoardModel> newMap = new HashMap<>();
+
+        String url = domainUrl + "boards.json";
+
+        JSONObject response = downloadJSONObject(url, (oldBoardsList != null && this.boardsMap != null), listener, task);
+        if (response == null) return oldBoardsList;
+
+        JSONArray boardsList = response.getJSONArray("boards");
+
+        for (int i = 0, len=boardsList.length(); i < len; i++) {
+            JSONObject currentBoard = boardsList.getJSONObject(i);
+            BoardModel model = mapBoardModel(currentBoard, true, resources);
+            newMap.put(model.boardName, model);
+            list.add(new SimpleBoardModel(model));
         }
-        
         this.boardsMap = newMap;
-        
+
+        Collections.sort(list, new Comparator<SimpleBoardModel>() {
+            @Override
+            public int compare(SimpleBoardModel o1, SimpleBoardModel o2) {
+                return o1.boardName.compareTo(o2.boardName);
+            }
+        });
+
         SimpleBoardModel[] result = new SimpleBoardModel[list.size()];
         boolean[] copied = new boolean[list.size()];
         int curIndex = 0;
@@ -413,30 +480,17 @@ public class MakabaModule extends CloudflareChanModule {
                 result[curIndex++] = list.get(i);
             }
         }
-        
+
         return result;
     }
 
     @Override
     public BoardModel getBoard(String shortName, ProgressListener listener, CancellableTask task) throws Exception {
         try {
-            if (this.boardsMap == null) {
-                try {
-                    getBoardsList(listener, task, null);
-                } catch (Exception e) {
-                    Logger.d(TAG, "cannot update boards list from mobile.fcgi");
-                }
-            }
-            if (this.boardsMap != null) {
-                if (this.boardsMap.containsKey(shortName)) {
-                    return this.boardsMap.get(shortName);
-                }
-            }
-            
             if (this.customBoardsMap.containsKey(shortName)) {
                 return this.customBoardsMap.get(shortName);
             }
-            
+
             String url = domainUrl + shortName + "/index.json";
             JSONObject json;
             try {
@@ -450,6 +504,18 @@ public class MakabaModule extends CloudflareChanModule {
             return result;
         } catch (Exception e) {
             Logger.e(TAG, e);
+            if (this.boardsMap == null) {
+                try {
+                    getBoardsList(listener, task, null);
+                } catch (Exception e2) {
+                    Logger.d(TAG, "cannot update boards list");
+                }
+            }
+            if (this.boardsMap != null) {
+                if (this.boardsMap.containsKey(shortName)) {
+                    return this.boardsMap.get(shortName);
+                }
+            }
             return defaultBoardModel(shortName, resources);
         }
     }
@@ -460,14 +526,14 @@ public class MakabaModule extends CloudflareChanModule {
         String url = domainUrl + boardName + "/" + (page == 0 ? "index" : Integer.toString(page)) + ".json";
         JSONObject index = downloadJSONObject(url, (oldList != null), listener, task);
         if (index == null) return oldList;
-        
+
         try { // кэширование модели BoardModel во время загрузки списка тредов
             BoardModel boardModel = mapBoardModel(index, false, resources);
             if (boardName.equals(boardModel.boardName)) {
                 this.customBoardsMap.put(boardModel.boardName, boardModel);
             }
         } catch (Exception e) { /* если не получилось сейчас замапить модель доски, и фиг с ней */ }
-        
+
         JSONArray threads = index.getJSONArray("threads");
         ThreadModel[] result = new ThreadModel[threads.length()];
         for (int i=0; i<threads.length(); ++i) {
@@ -500,8 +566,9 @@ public class MakabaModule extends CloudflareChanModule {
                     } catch (Exception e) {
                         Logger.e(TAG, e);
                     }
-                    model.isSticky = curThread.optInt("sticky") != 0;
-                    model.isClosed = curThread.optInt("closed") != 0;
+                    model.isSticky = curThread.optInt("sticky", 0) != 0;
+                    model.isClosed = curThread.optInt("closed", 0) != 0;
+                    model.isCyclical = curThread.optInt("endless", 0) != 0;
                     model.posts = new PostModel[] { mapPostModel(curThread, boardName) };
                     result[i] = model;
                 }
@@ -520,7 +587,7 @@ public class MakabaModule extends CloudflareChanModule {
     public PostModel[] getPostsList(String boardName, String threadNumber, ProgressListener listener, CancellableTask task, PostModel[] oldList)
             throws Exception {
         boolean mobileAPI = preferences.getBoolean(getSharedKey(PREF_KEY_MOBILE_API), true);
-        if (!mobileAPI) {
+        if (!mobileAPI || oldList == null || oldList.length == 0) {
             String url = domainUrl + boardName + "/res/" + threadNumber + ".json";
             JSONObject object = downloadJSONObject(url, (oldList != null), listener, task);
             if (object == null) return oldList;
@@ -535,48 +602,29 @@ public class MakabaModule extends CloudflareChanModule {
             return posts;
         }
         try {
-            String lastPost = threadNumber;
-            if (oldList != null && oldList.length > 0) {
-                lastPost = oldList[oldList.length-1].number;
+            String lastPost = oldList[oldList.length-1].number;
+            String url = domainUrl + "api/mobile/v2/after/" + boardName + "/" + threadNumber + "/" + lastPost;
+            JSONObject object = downloadJSONObject(url, false, listener, task);
+            if (object.getInt("result") == 0) {
+                JSONObject makabaError = object.getJSONObject("error");
+                String reason = makabaError.getString("message");
+                throw new Exception(reason);
             }
-            String url = domainUrl + "makaba/mobile.fcgi?task=get_thread&board=" + boardName + "&thread=" + threadNumber + "&num=" + lastPost;
-            JSONArray newPostsArray = downloadJSONArray(url, (oldList != null), listener, task);
-            if (newPostsArray == null) return oldList;
+            JSONArray newPostsArray = object.getJSONArray("posts");
             PostModel[] newPosts = new PostModel[newPostsArray.length()];
             for (int i=0; i<newPostsArray.length(); ++i) {
                 newPosts[i] = mapPostModel(newPostsArray.getJSONObject(i), boardName);
             }
-            if (oldList == null || oldList.length == 0) {
-                return newPosts;
-            } else {
-                long lastNum = Long.parseLong(lastPost);
-                ArrayList<PostModel> list = new ArrayList<PostModel>(Arrays.asList(oldList));
-                for (int i=0; i<newPosts.length; ++i) {
-                    if (Long.parseLong(newPosts[i].number) > lastNum) {
-                        list.add(newPosts[i]);
-                    }
+            long lastNum = Long.parseLong(lastPost);
+            ArrayList<PostModel> list = new ArrayList<>(Arrays.asList(oldList));
+            for (PostModel newPost : newPosts) {
+                if (Long.parseLong(newPost.number) > lastNum) {
+                    list.add(newPost);
                 }
-                return list.toArray(new PostModel[list.size()]);
             }
+            return list.toArray(new PostModel[0]);
         } catch (JSONException e) {
-            String lastPost = threadNumber;
-            if (oldList != null && oldList.length > 0) {
-                lastPost = oldList[oldList.length-1].number;
-            }
-            String url = domainUrl + "makaba/mobile.fcgi?task=get_thread&board=" + boardName + "&thread=" + threadNumber + "&num=" + lastPost;
-            JSONObject makabaError = downloadJSONObject(url, (oldList != null), listener, task);
-            Integer code = makabaError.has("Code") ? makabaError.getInt("Code") : null;
-            if (code != null && code.equals(Integer.valueOf(-404))) code = 404;
-            String error = code != null ? code.toString() : null;
-            String reason = makabaError.has("Error") ? makabaError.getString("Error") : null;
-            if (reason != null) {
-                if (error != null) {
-                    error += ": " + reason;
-                } else {
-                    error = reason;
-                }
-            }
-            throw error == null ? e : new Exception(error);
+            throw new Exception("Mobile API error");
         }
     }
 
@@ -599,13 +647,16 @@ public class MakabaModule extends CloudflareChanModule {
                     addString("find", searchRequest).
                     addString("json", "1").
                     build();
-            HttpRequestModel request = HttpRequestModel.builder().setPOST(postEntity).build();
-            JSONObject response;
+            HttpRequestModel request = HttpRequestModel.builder().setPOST(postEntity).setNoRedirect(true).build();
+            JSONObject response = null;
             try {
-                response = HttpStreamer.getInstance().getJSONObjectFromUrl(url, request, httpClient, listener, task, true);
+                response = HttpStreamer.getInstance().getJSONObjectFromUrl(url, request, httpClient, listener, task, true,
+                        (canHashwall() ? hashwallDetector : null));
             } catch (HttpWrongStatusCodeException e) {
                 checkCloudflareError(e, url);
                 throw e;
+            } catch (HttpWrongResponseException he) {
+                handleWrongResponse(url, he);
             }
             if (listener != null) listener.setIndeterminate();
             JSONArray posts = response.getJSONArray("posts");
@@ -627,16 +678,15 @@ public class MakabaModule extends CloudflareChanModule {
         
         String url = domainUrl + "api/captcha/" + captchaKey + "/id?board=" + boardName + (threadNumber != null ? "&thread=" + threadNumber : "");
         JSONObject response = downloadJSONObject(url, false, listener, task);
-        String id = response.optString("id");
         switch (response.optInt("result", -1)) {
             case 1: //Enabled
                 CaptchaModel captchaModel;
                 captchaMailRuId = null;
                 this.captchaType = captchaType;
-                this.captchaId = id;
+                captchaId = response.optString("id");
                 switch (captchaType) {
                     case CAPTCHA_2CHAPTCHA:
-                        url = domainUrl + "api/captcha/" + captchaKey + "/image/" + id;
+                        url = domainUrl + "api/captcha/" + captchaKey + "/show?id=" + captchaId;
                         captchaModel = downloadCaptcha(url, listener, task);
                         captchaModel.type = CaptchaModel.TYPE_NORMAL_DIGITS;
                         return captchaModel;
@@ -695,18 +745,6 @@ public class MakabaModule extends CloudflareChanModule {
     @Override
     public String sendPost(SendPostModel model, ProgressListener listener, CancellableTask task) throws Exception {
         String usercode_nocaptcha = preferences.getString(getSharedKey(PREF_KEY_NOCAPTCHA_COOKIE_VALUE), "");
-        if (captchaType == CAPTCHA_2CHAPTCHA && usercode_nocaptcha.equals("")) {
-            String checkCaptchaUrl = domainUrl + "api/captcha/2chaptcha/check/" + captchaId + "?value=" + model.captchaAnswer;
-            JSONObject captchaResult;
-            try {
-                captchaResult = downloadJSONObject(checkCaptchaUrl, false, listener, task);
-                if (captchaResult.getInt("result") == 0) {
-                    throw new Exception(captchaResult.getString("description"));
-                }
-            } catch (JSONException e) {
-                Logger.e(TAG, e);
-            }
-        }
 
         String url = domainUrl + "makaba/posting.fcgi?json=1";
         ExtendedMultipartBuilder postEntityBuilder = ExtendedMultipartBuilder.create().setDelegates(listener, task).
@@ -718,32 +756,33 @@ public class MakabaModule extends CloudflareChanModule {
         if (model.captchaAnswer.equals("") && !usercode_nocaptcha.equals("")) {
             postEntityBuilder.addString("usercode", usercode_nocaptcha);
         }
+        String recaptcha2 = null;
         if (usercode_nocaptcha.equals("")) {
             switch (captchaType) {
                 case CAPTCHA_2CHAPTCHA:
                     postEntityBuilder.
-                        addString("captcha_type", "2chaptcha").
-                        addString("2chaptcha_id", captchaId).
-                        addString("2chaptcha_value", model.captchaAnswer);
+                        addString("captcha_type", "2chcaptcha").
+                        addString("2chcaptcha_id", captchaId).
+                        addString("2chcaptcha_value", model.captchaAnswer);
                     break;
                 case CAPTCHA_RECAPTCHA:
                 case CAPTCHA_RECAPTCHA_FALLBACK:
-                    String response = Recaptcha2solved.pop(captchaId);
-                    if (response == null) {
+                    recaptcha2 = Recaptcha2solved.pop(captchaId);
+                    if (recaptcha2 == null) {
                         boolean fallback = getUsingCaptchaType() == CAPTCHA_RECAPTCHA_FALLBACK;
                         throw Recaptcha2.obtain(domainUrl, captchaId, null, CHAN_NAME, fallback);
                     }
                     postEntityBuilder.
                         addString("captcha_type", "recaptcha").
-                        addString("2chaptcha_id", captchaId).
-                        addString("g-recaptcha-response", response);
+                        addString("2chcaptcha_id", captchaId).
+                        addString("g-recaptcha-response", recaptcha2);
                     break;
                 case CAPTCHA_MAILRU:
                     if (captchaMailRuId != null) {
                         postEntityBuilder.addString("captcha_id", captchaMailRuId);
                         postEntityBuilder.addString("captcha_value", model.captchaAnswer);
                         postEntityBuilder.addString("captcha_type", "mailru");
-                        postEntityBuilder.addString("2chaptcha_id", captchaId);
+                        postEntityBuilder.addString("2chcaptcha_id", captchaId);
                     }
                     break;
             }
@@ -770,10 +809,14 @@ public class MakabaModule extends CloudflareChanModule {
         HttpRequestModel request = HttpRequestModel.builder().setPOST(postEntityBuilder.build()).build();
         String response = null;
         try {
-            response = HttpStreamer.getInstance().getStringFromUrl(url, request, httpClient, null, task, true);
+            response = HttpStreamer.getInstance().getStringFromUrl(url, request, httpClient, null, task, true,
+                    (canHashwall() ? hashwallDetector : null));
         } catch (HttpWrongStatusCodeException e) {
             checkCloudflareError(e, url);
             throw e;
+        } catch (HttpWrongResponseException he) {
+            if (recaptcha2 != null) Recaptcha2solved.push(captchaId, recaptcha2);
+            handleWrongResponse(url, he);
         }
         saveUsercodeCookie();
         JSONObject makabaResult = new JSONObject(response);
@@ -819,10 +862,13 @@ public class MakabaModule extends CloudflareChanModule {
         HttpRequestModel request = HttpRequestModel.builder().setPOST(postEntityBuilder.build()).setNoRedirect(true).build();
         String response = null;
         try {
-            response = HttpStreamer.getInstance().getStringFromUrl(url, request, httpClient, null, task, true);
+            response = HttpStreamer.getInstance().getStringFromUrl(url, request, httpClient, null, task, true,
+                    (canHashwall() ? hashwallDetector : null));
         } catch (HttpWrongStatusCodeException e) {
             checkCloudflareError(e, url);
             throw e;
+        } catch (HttpWrongResponseException he) {
+            handleWrongResponse(url, he);
         }
         try {
             JSONObject json = new JSONObject(response);
@@ -833,7 +879,7 @@ public class MakabaModule extends CloudflareChanModule {
             throw new Exception(response);
         }
     }
-    
+
     @Override
     public String buildUrl(UrlPageModel model) throws IllegalArgumentException {
         if (!model.chanName.equals(CHAN_NAME)) throw new IllegalArgumentException("wrong chan");
@@ -934,5 +980,41 @@ public class MakabaModule extends CloudflareChanModule {
             }
         }
         return model;
+    }
+
+    @Override
+    protected JSONObject downloadJSONObject(String url, boolean checkIfModified, ProgressListener listener, CancellableTask task) throws Exception {
+        if (!canHashwall()) return super.downloadJSONObject(url, checkIfModified, listener, task);
+        HttpRequestModel rqModel = HttpRequestModel.builder().setGET().setCheckIfModified(checkIfModified).build();
+        try {
+            JSONObject object = HttpStreamer.getInstance().getJSONObjectFromUrl(url, rqModel, httpClient, listener, task, true, hashwallDetector);
+            if (task != null && task.isCancelled()) throw new Exception("interrupted");
+            if (listener != null) listener.setIndeterminate();
+            return object;
+        } catch (HttpWrongStatusCodeException e) {
+            checkCloudflareError(e, url);
+            throw e;
+        } catch (HttpWrongResponseException e) {
+            handleWrongResponse(url, e);
+            return null;
+        }
+    }
+
+    @Override
+    protected JSONArray downloadJSONArray(String url, boolean checkIfModified, ProgressListener listener, CancellableTask task) throws Exception {
+        if (!canHashwall()) return super.downloadJSONArray(url, checkIfModified, listener, task);
+        HttpRequestModel rqModel = HttpRequestModel.builder().setGET().setCheckIfModified(checkIfModified).build();
+        try {
+            JSONArray array = HttpStreamer.getInstance().getJSONArrayFromUrl(url, rqModel, httpClient, listener, task, true, hashwallDetector);
+            if (task != null && task.isCancelled()) throw new Exception("interrupted");
+            if (listener != null) listener.setIndeterminate();
+            return array;
+        } catch (HttpWrongStatusCodeException e) {
+            checkCloudflareError(e, url);
+            throw e;
+        } catch (HttpWrongResponseException e) {
+            handleWrongResponse(url, e);
+            return null;
+        }
     }
 }

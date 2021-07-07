@@ -265,13 +265,15 @@ public class HttpStreamer {
         HttpResponseModel responseModel = null;
         try {
             responseModel = getFromUrl(url, requestModel, httpClient, listener, task);
+            if (detector != null)
+                detector.check(responseModel);
             if (responseModel.statusCode != 200)
                 if (responseModel.notModified())
                     return null;
                 else
-                    throw new HttpWrongStatusCodeException(responseModel.statusCode, responseModel.statusCode+" - "+responseModel.statusReason);
-            if (detector != null)
-                detector.check(responseModel);
+                    throw new HttpWrongStatusCodeException(responseModel.statusCode,
+                            responseModel.statusCode + " - " + responseModel.statusReason,
+                            (anyCode ? tryGetBytes(responseModel.stream) : null));
             if (responseModel.stream == null) throw new HttpRequestException(new NullPointerException());
             ByteArrayOutputStream output = new ByteArrayOutputStream(1024);
             IOUtils.copyStream(responseModel.stream, output);
@@ -371,13 +373,15 @@ public class HttpStreamer {
         BufferedReader in = null;
         try {
             responseModel = getFromUrl(url, requestModel, httpClient, listener, task);
+            if (detector != null)
+                detector.check(responseModel);
             if (responseModel.statusCode != 200)
                 if (responseModel.notModified())
                     return null;
                 else
-                    throw new HttpWrongStatusCodeException(responseModel.statusCode, responseModel.statusCode+" - "+responseModel.statusReason);
-            if (detector != null)
-                detector.check(responseModel);
+                    throw new HttpWrongStatusCodeException(responseModel.statusCode,
+                            responseModel.statusCode + " - " + responseModel.statusReason,
+                            (anyCode ? tryGetBytes(responseModel.stream) : null));
             if (responseModel.stream == null) throw new HttpRequestException(new NullPointerException());
             in = new BufferedReader(new InputStreamReader(responseModel.stream));
             return isArray ? new JSONArray(new JSONTokener(in)) : new JSONObject(new JSONTokener(in));
@@ -425,10 +429,10 @@ public class HttpStreamer {
             for (int i = 0; i < 5; i++) {
                 downloaded_size = content_stream.getSize();
                 responseModel = getFromUrl(url, requestModel, httpClient, listener, task, downloaded_size);
-                if (responseModel.statusCode != 200 && responseModel.statusCode != 206)
-                    throw new HttpWrongStatusCodeException(responseModel.statusCode, responseModel.statusCode+" - "+responseModel.statusReason);
                 if (detector != null)
                     detector.check(responseModel);
+                if (responseModel.statusCode != 200 && responseModel.statusCode != 206)
+                    throw new HttpWrongStatusCodeException(responseModel.statusCode, responseModel.statusCode+" - "+responseModel.statusReason);
                 content_length = responseModel.contentLength;
                 try {
                     IOUtils.copyStream(responseModel.stream, content_stream);

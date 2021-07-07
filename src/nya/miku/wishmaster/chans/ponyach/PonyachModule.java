@@ -253,7 +253,6 @@ public class PonyachModule extends AbstractWakabaModule {
         preferenceGroup.addPreference(domainPref);
         
         addHttpsPreference(preferenceGroup, useHttpsDefaultValue());
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
     }

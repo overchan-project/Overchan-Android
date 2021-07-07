@@ -93,19 +93,31 @@ public class FourchanJsonMapper {
         model.trip = object.optString("trip", "");
         String capcode = object.optString("capcode", "none");
         if (!capcode.equals("none")) model.trip += "##"+capcode;
-        String countryIcon = object.optString("country", "");
-        boolean troll = false;
-        if (countryIcon.equals("") && object.has("troll_country")) {
-            countryIcon = object.optString("troll_country", "");
-            troll = true;
+        if (object.has("board_flag") || object.has("country")) {
+            boolean custom = object.has("board_flag");
+            String flagId = custom ? object.optString("board_flag") : object.optString("country");
+            if (flagId.length() > 0) {
+                BadgeIconModel icon = new BadgeIconModel();
+                icon.source = (custom ? "s.4cdn.org/image/flags/" + boardName + "/" : "s.4cdn.org/image/country/")
+                        + flagId.toLowerCase(Locale.US) + ".gif";
+                icon.description = custom ? object.optString("flag_name") : object.optString("country_name");
+                model.icons = new BadgeIconModel[] { icon };
+            }
         }
-        if (!countryIcon.equals("")) {
+        int passYear = object.optInt("since4pass", 0);
+        if (passYear > 0) {
             BadgeIconModel icon = new BadgeIconModel();
-            icon.source = "s.4cdn.org/image/country/" + (troll ? "troll/" : "") + countryIcon.toLowerCase(Locale.US) + ".gif";
-            icon.description = object.optString("country_name");
-            model.icons = new BadgeIconModel[] { icon };
+            icon.source = "s.4cdn.org/image/minileaf.gif";
+            icon.description = "Pass user since " + passYear;
+            if (model.icons != null) {
+                BadgeIconModel[] newIcons = new BadgeIconModel[model.icons.length + 1];
+                System.arraycopy(model.icons, 0, newIcons, 0, model.icons.length);
+                newIcons[model.icons.length] = icon;
+                model.icons = newIcons;
+            } else {
+                model.icons = new BadgeIconModel[] { icon };
+            }
         }
-        model.op = false;
         String id = object.optString("id", "");
         model.sage = id.equalsIgnoreCase("Heaven");
         if (!id.equals("")) model.name += (" ID:" + id);

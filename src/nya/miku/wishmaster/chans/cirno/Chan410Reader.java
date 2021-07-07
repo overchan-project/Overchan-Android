@@ -26,6 +26,7 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringEscapeUtils;
 
+import nya.miku.wishmaster.api.models.AttachmentModel;
 import nya.miku.wishmaster.api.models.PostModel;
 import nya.miku.wishmaster.api.util.CryptoUtils;
 import nya.miku.wishmaster.api.util.WakabaReader;
@@ -92,7 +93,18 @@ public class Chan410Reader extends WakabaReader {
             if (idPos != 0) idPos = ch == USER_ID_FILTER[0] ? 1 : 0;
         }
     }
-    
+
+    @Override
+    protected void parseAttachment(String html) {
+        super.parseAttachment(html);
+        if (currentAttachments.size() > 0) {
+            AttachmentModel attachment = currentAttachments.get(currentAttachments.size() - 1);
+            if (attachment.type == AttachmentModel.TYPE_OTHER_FILE && attachment.path.endsWith(".webp")) {
+                attachment.type = AttachmentModel.TYPE_IMAGE_STATIC;
+            }
+        }
+    }
+
     @Override
     protected void postprocessPost(PostModel post) {
         if (post.subject.contains("\u21E9")) post.sage = true;

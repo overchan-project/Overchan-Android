@@ -74,14 +74,13 @@ import nya.miku.wishmaster.lib.org_json.JSONObject;
 
 public class NewNullchanModule extends CloudflareChanModule {
 
-    static final String CHAN_NAME = "0chan.pl";
-    private static final String DEFAULT_DOMAIN = "www.0chan.pl";
-    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN, "0chan.pl" };
+    static final String CHAN_NAME = "ochan.ru";
+    private static final String DEFAULT_DOMAIN = "ochan.ru";
+    private static final String[] DOMAINS = new String[] { DEFAULT_DOMAIN };
 
     private static final Pattern BOARD_PATTERN = Pattern.compile("(\\w+)");
     private static final Pattern THREADPAGE_PATTERN = Pattern.compile("(\\w+)/(\\d+)(?:#(\\d+))?");
     private static final String CAPTCHA_BASE64_PREFIX = "data:image/png;base64,";
-    private static final String DISCLAIMER_COOKIE_NAME = "disclaimer";
     private static final String PREF_KEY_DOMAIN = "domain";
     
     private static String sessionId = null;
@@ -144,7 +143,7 @@ public class NewNullchanModule extends CloudflareChanModule {
 
     @Override
     public String getDisplayingName() {
-        return "Øчан (0chan.pl)";
+        return "Øчан (ochan.ru)";
     }
 
     @Override
@@ -168,32 +167,12 @@ public class NewNullchanModule extends CloudflareChanModule {
     public void addPreferencesOnScreen(PreferenceGroup preferenceGroup) {
         addDomainPreference(preferenceGroup);
         addHttpsPreference(preferenceGroup, true);
-        addCloudflareRecaptchaFallbackPreference(preferenceGroup);
         addProxyPreferences(preferenceGroup);
         addClearCookiesPreference(preferenceGroup);
     }
 
     private boolean useHttps() {
         return useHttps(true);
-    }
-
-    @Override
-    protected void initHttpClient() {
-        super.initHttpClient();
-        setDisclaimerCookie();
-    }
-
-    private void setDisclaimerCookie() {
-        BasicClientCookie c = new BasicClientCookie(DISCLAIMER_COOKIE_NAME, "1");
-        c.setDomain(getUsingDomain());
-        c.setPath("/");
-        httpClient.getCookieStore().addCookie(c);
-    }
-
-    @Override
-    public void clearCookies() {
-        super.clearCookies();
-        setDisclaimerCookie();
     }
 
     private String getUsingDomain() {

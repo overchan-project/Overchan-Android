@@ -22,8 +22,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.apache.commons.lang3.StringEscapeUtils;
 
@@ -40,6 +42,7 @@ import nya.miku.wishmaster.api.interfaces.CancellableTask;
 import nya.miku.wishmaster.api.interfaces.ProgressListener;
 import nya.miku.wishmaster.api.models.AttachmentModel;
 import nya.miku.wishmaster.api.models.BoardModel;
+import nya.miku.wishmaster.api.models.CaptchaModel;
 import nya.miku.wishmaster.api.models.DeletePostModel;
 import nya.miku.wishmaster.api.models.PostModel;
 import nya.miku.wishmaster.api.models.SendPostModel;
@@ -58,12 +61,14 @@ public class KurisachModule extends AbstractInstant0chan {
     private static final String CHAN_NAME = "kurisa.ch";
     private static final String DOMAIN = "kurisa.ch";
     private static final SimpleBoardModel[] BOARDS = new SimpleBoardModel[] {
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "sg", "steins;gate", "Boards", true),
-            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "vg", "video;games", "Boards", false)
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "sg", "steins;gate", null, false),
+            ChanModels.obtainSimpleBoardModel(CHAN_NAME, "vg", "video;games", null, false)
     };
     private static final int THREADS_PER_PAGE = 15;
     private static final long TIMEZONE_CORRECTION = 10800000;    //UTC+3 offset. Remove when timestamp will be fixed on server
-    
+
+    private Map<String, Boolean> captchaEnabledMap = null;
+
     public KurisachModule(SharedPreferences preferences, Resources resources) {
         super(preferences, resources);
     }
@@ -109,7 +114,28 @@ public class KurisachModule extends AbstractInstant0chan {
     
     @Override
     public SimpleBoardModel[] getBoardsList(ProgressListener listener, CancellableTask task, SimpleBoardModel[] oldBoardsList) throws Exception {
-        return BOARDS;
+        List<SimpleBoardModel> boardsList = new ArrayList<>();
+        String url = getUsingUrl() + "api.php?id=1&method=get_boards";
+        JSONObject json;
+        try {
+            json = downloadJSONObject(url, false, listener, task);
+            JSONObject result = json.getJSONObject("result");
+            List<String> boardNames = new ArrayList<>(result.keySet());
+            Collections.sort(boardNames);
+            for (String boardName : boardNames) {
+                JSONObject boardJson = result.getJSONObject(boardName);
+                SimpleBoardModel model = new SimpleBoardModel();
+                model.chan = getChanName();
+                model.boardName = boardName;
+                model.boardDescription = StringEscapeUtils.unescapeHtml4(boardJson.optString("name", boardName));
+                boardsList.add(model);
+                if (captchaEnabledMap == null) captchaEnabledMap = new HashMap<>();
+                captchaEnabledMap.put(boardName, boardJson.optInt("captchaenabled", 1) == 1);
+            }
+            return boardsList.toArray(new SimpleBoardModel[0]);
+        } catch (Exception e) {
+            return BOARDS;
+        }
     }
     
     @Override
@@ -312,6 +338,15 @@ public class KurisachModule extends AbstractInstant0chan {
             return result.optString("message");
         } else {
             return response.optString("error");
+        }
+    }
+
+    @Override
+    public CaptchaModel getNewCaptcha(String boardName, String threadNumber, ProgressListener listener, CancellableTask task) throws Exception {
+        if (captchaEnabledMap != null && captchaEnabledMap.containsKey(boardName) && !captchaEnabledMap.get(boardName)) {
+            return null;
+        } else {
+            return super.getNewCaptcha(boardName, threadNumber, listener, task);
         }
     }
     

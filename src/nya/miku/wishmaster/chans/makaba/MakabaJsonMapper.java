@@ -85,54 +85,50 @@ public class MakabaJsonMapper {
         model.bumpLimit = 500;
         model.lastPage = 9;
         
-        model.nsfw = SFW_BOARDS.indexOf(model.boardName) == -1;
-        model.requiredFileForNewThread = NO_IMAGES_BOARDS.indexOf(model.boardName) == -1;
-        model.attachmentsMaxCount = NO_IMAGES_BOARDS.indexOf(model.boardName) == -1 ? 4 : 0;
-        model.allowSubjects = NO_SUBJECTS_BOARDS.indexOf(model.boardName) == -1;
-        model.allowNames = NO_USERNAMES_BOARDS.indexOf(model.boardName) == -1;
+        model.nsfw = !SFW_BOARDS.contains(model.boardName);
+        model.requiredFileForNewThread = !NO_IMAGES_BOARDS.contains(model.boardName);
+        model.attachmentsMaxCount = !NO_IMAGES_BOARDS.contains(model.boardName) ? 4 : 0;
+        model.allowSubjects = !NO_SUBJECTS_BOARDS.contains(model.boardName);
+        model.allowNames = !NO_USERNAMES_BOARDS.contains(model.boardName);
         
         return model;
     }
     
-    static BoardModel mapBoardModel(JSONObject source, boolean fromMobileBoardsList, Resources resources) throws JSONException {
-        BoardModel model = defaultBoardModel(source.getString(fromMobileBoardsList ? "id" : "Board"), resources);
-        
-        if (fromMobileBoardsList) {
+    static BoardModel mapBoardModel(JSONObject source, boolean fromBoardsList, Resources resources) throws JSONException {
+        BoardModel model = defaultBoardModel(source.getString(fromBoardsList ? "id" : "Board"), resources);
+        model.defaultUserName = source.optString("default_name", model.defaultUserName);
+        model.bumpLimit = source.optInt("bump_limit", model.bumpLimit);
+        try {
+            model.allowNames = source.getInt("enable_names") == 1;
+        } catch (Exception ignored) {}
+
+        if (fromBoardsList) {
             model.boardDescription = source.getString("name");
-            model.boardCategory = source.getString("category");
-            
-            model.defaultUserName = getStringSafe(source, "default_name", "Аноним");
-            model.bumpLimit = getIntSafe(source, "bump_limit", 500);
-            model.lastPage = getIntSafe(source, "pages", 10) - 1;
+            model.boardCategory = source.optString("category");
         } else {
             model.boardDescription = source.getString("BoardName");
             model.boardCategory = null;
-            
-            model.defaultUserName = "Аноним";
-            model.bumpLimit = 500;
             try {
                 model.lastPage = source.getJSONArray("pages").length() - 1;
             } catch (Exception e) {
-                model.lastPage = 9;
+                model.lastPage = BoardModel.LAST_PAGE_UNDEFINED;
             }
+            try {
+                JSONArray iconsArray = source.getJSONArray("icons");
+                if (iconsArray.length() > 0) {
+                    String[] icons = new String[iconsArray.length() + 1];
+                    icons[0] = resources.getString(R.string.makaba_no_icon);
+                    for (int i=0; i<iconsArray.length(); ++i) {
+                        icons[iconsArray.getJSONObject(i).getInt("num")] = iconsArray.getJSONObject(i).getString("name");
+                    }
+                    for (String icon : icons) {
+                        if (icon == null) throw new Exception();
+                    }
+                    model.allowIcons = true;
+                    model.iconDescriptions = icons;
+                }
+            } catch (Exception e) { /* щито поделать, десу, получить список иконок не удалось, или их просто нет */ }
         }
-        
-        try {
-            JSONArray iconsArray = source.getJSONArray("icons");
-            if (iconsArray.length() > 0) {
-                String[] icons = new String[iconsArray.length() + 1];
-                icons[0] = resources.getString(R.string.makaba_no_icon);
-                for (int i=0; i<iconsArray.length(); ++i) {
-                    icons[iconsArray.getJSONObject(i).getInt("num")] = iconsArray.getJSONObject(i).getString("name");
-                }
-                for (int i=0; i<icons.length; ++i) {
-                    if (icons[i] == null) throw new Exception();
-                }
-                model.allowIcons = true;
-                model.iconDescriptions = icons;
-            }
-        } catch (Exception e) { /* щито поделать, десу, получить список иконок не удалось, или их просто нет */ }
-        
         return model;
     }
     
@@ -193,9 +189,9 @@ public class MakabaJsonMapper {
             model.comment = RegexUtils.replaceAll(model.comment, HASH_LINK_PATTERN_1, "<a href=\"$1"+HASHTAG_PREFIX+"$2\">");
             model.comment = RegexUtils.replaceAll(model.comment, HASH_LINK_PATTERN_2, "<a href=\"$2"+HASHTAG_PREFIX+"$1\">");
         }
-        
-        if (source.has("files")) {
-            JSONArray filesArray = source.getJSONArray("files");
+
+        JSONArray filesArray = source.optJSONArray("files");
+        if (filesArray != null && filesArray.length() > 0) {
             model.attachments = new AttachmentModel[filesArray.length()];
             for (int i=0; i<filesArray.length(); ++i) {
                 model.attachments[i] = mapAttachmentModel(filesArray.getJSONObject(i), boardName);
@@ -211,7 +207,7 @@ public class MakabaJsonMapper {
                 model.comment = model.comment + "<br/><em><font color=\"red\">(Автор этого поста был предупрежден.)</font></em>";
                 break;
         }
-        if (NO_SUBJECTS_BOARDS.indexOf(boardName) >= 0) model.subject = "";
+        if (NO_SUBJECTS_BOARDS.contains(boardName)) model.subject = "";
         return model;
     }
     
@@ -250,7 +246,7 @@ public class MakabaJsonMapper {
             icon.description = m.group(2);
             list.add(icon);
         }
-        return list.toArray(new BadgeIconModel[list.size()]);
+        return list.toArray(new BadgeIconModel[0]);
     }
     
     private static String getStringSafe(JSONObject object, String key, String defaultValue) {
