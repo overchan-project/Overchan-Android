@@ -53,6 +53,7 @@ import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.os.Build;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -185,14 +186,23 @@ public class Recaptcha2fallback extends InteractiveException {
                                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
                             selector.setOrientation(LinearLayout.VERTICAL);
                             selector.setWeightSum(maxY);
+                            int swWidth, swHeight;
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+                                imageView.measure(0, 0);
+                                swWidth = imageView.getMeasuredWidth() / maxX;
+                                swHeight = imageView.getMeasuredHeight() / maxY;
+                            } else {
+                                swWidth = 0;
+                                swHeight = 0;
+                            }
                             for (int y=0; y<maxY; ++y) {
                                 LinearLayout subSelector = new LinearLayout(activity);
-                                subSelector.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+                                subSelector.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, swHeight, 1f));
                                 subSelector.setOrientation(LinearLayout.HORIZONTAL);
                                 subSelector.setWeightSum(maxX);
                                 for (int x=0; x<maxX; ++x) {
                                     FrameLayout switcher = new FrameLayout(activity);
-                                    switcher.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                                    switcher.setLayoutParams(new LinearLayout.LayoutParams(swWidth, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
                                     switcher.setTag(new int[] { x, y });
                                     switcher.setOnClickListener(new View.OnClickListener() {
                                         @Override
